@@ -22,7 +22,7 @@ define(['codemirror/lib/codemirror'], function(CodeMirror) {
         return arr.indexOf(item) != -1;
     };
 
-    CodeMirror.contextHint = function (editor) {
+    CodeMirror.contextHint = function(editor) {
         // Find the token at the cursor
         var cur = editor.getCursor(),
             token = editor.getTokenAt(cur),
@@ -31,6 +31,7 @@ define(['codemirror/lib/codemirror'], function(CodeMirror) {
         // If it is a property, find out what it is a property of.
         var list = [];
         var clist = getCompletions(token, editor);
+
         for (var i = 0; i < clist.length; i++) {
             list.push({
                 str: clist[i],
@@ -49,7 +50,7 @@ define(['codemirror/lib/codemirror'], function(CodeMirror) {
     };
 
     // find all 'words' of current cell
-    var getAllTokens = function (editor) {
+    var getAllTokens = function(editor) {
         var found = [];
 
         // add to found if not already in it
@@ -85,13 +86,69 @@ define(['codemirror/lib/codemirror'], function(CodeMirror) {
     };
 
     var getCompletions = function(token, editor) {
+        /*
+         * Ideas for tests:
+         * Check that camelCase fails for non-alphabetic chars
+         * Check that it works for case where arrLen === tokenString len
+         */
         var candidates = getAllTokens(editor);
-        // filter all token that have a common start (but nox exactly) the lenght of the current token
-        var lambda = function (x) {
-                return (x.indexOf(token.string) === 0 && x != token.string);
-            };
-        var filterd = candidates.filter(lambda);
-        return filterd;
+
+        // check used by lambda filter to search for matches along camelcase or underscore breaks
+        var checkParts = function(fullStr, arr, tokenStr) {
+            var maybeIndex = 0;
+            var curArrIndex = 0;
+            for (var i = 0; i < tokenStr.length; i++) {
+                var curCharLower = tokenStr.charAt(i).toLowerCase();
+                if (fullStr.charAt(maybeIndex).toLowerCase() !== curCharLower) {
+                    curArrIndex++;
+                    if (curArrIndex >= arr.length) {
+                        return false;
+                    }
+                    maybeIndex = arr[curArrIndex];
+                    if (fullStr.charAt(maybeIndex).toLowerCase() !== curCharLower) {
+                        return false;
+                    }
+                }
+                maybeIndex++;
+                if (maybeIndex >= fullStr.length) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        var lambda = function(x) {
+            var tokenString = token.string;
+            // filter all token that have a common start (but not exactly) the length of the current token
+            if (x.indexOf(tokenString) === 0 && x != tokenString) {
+                return true;
+            } else if (tokenString.length < x.length) {
+                // filter for all tokens that have common starts along camelcase or underscore breaks
+                var camelBreaks = [0];
+                var underScoreBreaks = [0];
+                for (var i = 0; i < x.length - 1; i++) {
+                    var curChar = x.charAt(i);
+                    var nextChar = x.charAt(i + 1);
+                    if ((nextChar >= 'a' && nextChar <= 'z') || (nextChar >= 'A' && nextChar <= 'Z')) {
+                        if ((curChar >= 'a' && curChar <= 'z') && nextChar == nextChar.toUpperCase()) {
+                            camelBreaks.push(i + 1);
+                        } else if (curChar == '_' || curChar == '-') {
+                            underScoreBreaks.push(i + 1);
+                        }
+                    }
+                }
+
+                if (camelBreaks.length > 1) {
+                    return checkParts(x, camelBreaks, tokenString);
+                } else if (underScoreBreaks.length > 1) {
+                    return checkParts(x, underScoreBreaks, tokenString);
+                }
+            }
+            return false;
+        };
+        
+        var filtered = candidates.filter(lambda);
+        return filtered;
     };
 
     return {'contextHint': CodeMirror.contextHint};
